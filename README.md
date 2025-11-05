@@ -12,6 +12,19 @@ These examples are mostly simple code snippets. This repository does not contain
 ----------------------------|-----------|---------------------------------------------|
  [export-to-xml](assets/export-to-xml.ipynb) | notebook  | Demonstrates exporting data to XML format.  |
 
+## How to use
+
+There are two ways to use these examples:
+
+1. **Fork and import as a Databricks repo**  
+   - Fork this repository to your own Git provider (e.g., GitHub, Azure DevOps, GitLab, Bitbucket).  
+   - In Databricks, go to "Repos" > "Add Repo" > "Clone from Git provider".  
+   - Select your forked repository and import it as a Databricks repo.
+
+2. **Download and upload notebooks directly**  
+   - Download individual notebook files from the `assets/` directory.  
+   - In Databricks, use "Workspace" > "Import" to upload the notebook file.
+
 ## Contributing
 
 Feel free to add or expand an existing example and open a PR.
