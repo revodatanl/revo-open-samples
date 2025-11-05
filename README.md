@@ -10,7 +10,7 @@ These examples are mostly simple code snippets. This repository does not contain
 
  Sample Name                | Type      | Description                                 |
 ----------------------------|-----------|---------------------------------------------|
- [export-to-xml](assets/export-to-xml) | notebook  | Demonstrates exporting data to XML format.  |
+ [export-to-xml](assets/export-to-xml.ipynb) | notebook  | Demonstrates exporting data to XML format.  |
 
 ## Contributing
 
