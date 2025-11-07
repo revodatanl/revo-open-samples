@@ -11,6 +11,10 @@ These examples are mostly simple code snippets. This repository does not contain
  Sample Name                | Type      | Description                                 |
 ----------------------------|-----------|---------------------------------------------|
  [export-to-xml](assets/export-to-xml.ipynb) | notebook  | Demonstrates exporting data to XML format.  |
+ [secret-handling](assets/secret-handling.ipynb) | notebook | Everything about Databricks Secrets         |
+ [volumes](assets/volumes.ipynb) | notebook | Shows how to create volumes |
+ [widgets](assets/widgets.ipynb) | notebook | Demonstrates Databricks notebook widgets    |
+ 
 
 ## How to use
 
