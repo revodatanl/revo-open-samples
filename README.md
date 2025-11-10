@@ -14,9 +14,9 @@ These examples are mostly simple code snippets. This repository does not contain
  [secret-handling](assets/secret-handling.ipynb) | notebook | Everything about Databricks Secrets         |
  [volumes](assets/volumes.ipynb) | notebook | Shows how to create volumes |
  [widgets](assets/widgets.ipynb) | notebook | Demonstrates Databricks notebook widgets    |
- [cluster-capacity](assets/cluster-capacity-metrics.dbquery.ipynb) | query | SQL query to report cluster resource usage and capacity. |
+ [gateway-capacity](assets/gateway-capacity-metrics.dbquery.ipynb) | query | SQL query to report cluster resource usage and capacity. |
  [cluster-listing](assets/cluster-listing.dbquery.ipynb) | query | SQL query to list all clusters and their key properties. |
- [cluster-capacity-dashboard](assets/cluster-capacity-metrics-dashboard.lvdash.json) | dashboard | Dashboard visualizing cluster capacity and usage metrics. For hyperlinks to work, you need to alter the dataset. |
+ [gateway-capacity-dashboard](assets/gateway-capacity-metrics-dashboard.lvdash.json) | dashboard | Dashboard visualizing cluster capacity and usage metrics. For hyperlinks to work, you need to alter the dataset. |
 
 ## How to use
 
