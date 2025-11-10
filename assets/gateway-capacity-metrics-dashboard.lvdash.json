@@ -1,0 +1,1277 @@
+{
+  "datasets": [
+    {
+      "name": "9961399a",
+      "displayName": "System Compute Node Metrics Timeline Data",
+      "queryLines": [
+        "USE CATALOG `poc_ai_claim_handler`;\n",
+        "USE SCHEMA `raw`;\n",
+        "\n",
+        "\n",
+        "-- Graph driver node's CPU, RAM, Network, Disk\n",
+        "WITH node AS (\n",
+        "    SELECT *\n",
+        "    FROM system.compute.node_types\n",
+        "),\n",
+        "clusters AS (\n",
+        "    SELECT DISTINCT\n",
+        "        c.cluster_id,\n",
+        "        c.cluster_name\n",
+        "    FROM system.compute.clusters AS c\n",
+        "    WHERE  COALESCE(CAST(:cluster_name AS STRING), '') = ''\n",
+        "        OR INSTR(CAST(:cluster_name AS STRING), c.cluster_name) > 0\n",
+        "        OR INSTR(CAST(:cluster_name AS STRING), '[ANY]') > 0\n",
+        "),\n",
+        "timeline AS (\n",
+        "    SELECT\n",
+        "        n.account_id,\n",
+        "        n.workspace_id,\n",
+        "        n.cluster_id,\n",
+        "        n.instance_id,\n",
+        "        n.start_time,\n",
+        "        n.end_time,\n",
+        "        n.driver,\n",
+        "        n.cpu_user_percent,\n",
+        "        n.cpu_system_percent,\n",
+        "        n.cpu_wait_percent,\n",
+        "        n.mem_used_percent,\n",
+        "        n.mem_swap_percent,\n",
+        "        n.node_type,      \n",
+        "        n.network_sent_bytes,\n",
+        "        n.network_received_bytes,\n",
+        "        p.*\n",
+        "    FROM system.compute.node_timeline AS n,    \n",
+        "    LATERAL POSEXPLODE(n.disk_free_bytes_per_mount_point) AS p\n",
+        "    WHERE driver = TRUE               \n",
+        "        AND (n.start_time > :from)\n",
+        "        AND (n.start_time < :to)\n",
+        "        AND (n.cluster_id IN (SELECT c.cluster_id FROM clusters as c))\n",
+        "    ORDER BY n.instance_id, n.start_time desc\n",
+        "),\n",
+        "timeline_node AS (\n",
+        "    SELECT\n",
+        "        timeline.*,\n",
+        "        node.node_type,\n",
+        "        node.core_count,\n",
+        "        node.memory_mb,\n",
+        "        node.gpu_count,\n",
+        "        timeline.cpu_system_percent + timeline.cpu_user_percent AS cpu_percent,\n",
+        "        (timeline.cpu_system_percent + timeline.cpu_user_percent) * core_count / 100 AS cpu_cores_used,\n",
+        "        mem_used_percent * memory_mb / 100 AS mem_mb_used\n",
+        "    FROM timeline\n",
+        "    LEFT JOIN node\n",
+        "        ON node.account_id = timeline.account_id\n",
+        "        AND node.node_type = timeline.node_type\n",
+        ")\n",
+        "SELECT\n",
+        "    timeline_node.account_id,\n",
+        "    timeline_node.cluster_id,\n",
+        "    timeline_node.instance_id,\n",
+        "    timeline_node.start_time,\n",
+        "    timeline_node.end_time,\n",
+        "    timeline_node.driver,\n",
+        "    timeline_node.cpu_user_percent,\n",
+        "    timeline_node.cpu_system_percent,\n",
+        "    timeline_node.cpu_wait_percent,\n",
+        "    timeline_node.cpu_percent,\n",
+        "    timeline_node.cpu_cores_used,\n",
+        "    timeline_node.mem_used_percent,\n",
+        "    timeline_node.mem_mb_used,\n",
+        "    timeline_node.mem_swap_percent,\n",
+        "    timeline_node.gpu_count,\n",
+        "    timeline_node.core_count,\n",
+        "    timeline_node.memory_mb,\n",
+        "    timeline_node.network_sent_bytes,\n",
+        "    timeline_node.network_received_bytes,\n",
+        "    timeline_node.key,\n",
+        "    timeline_node.value\n",
+        "FROM timeline_node;\n",
+        "\n"
+      ],
+      "parameters": [
+        {
+          "displayName": "cluster_name",
+          "keyword": "cluster_name",
+          "dataType": "STRING",
+          "complexType": "MULTI",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "[ANY]"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "displayName": "from",
+          "keyword": "from",
+          "dataType": "DATETIME",
+          "defaultSelection": {
+            "values": {
+              "dataType": "DATETIME",
+              "values": [
+                {
+                  "value": "2025-09-14T12:25:30"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "displayName": "to",
+          "keyword": "to",
+          "dataType": "DATETIME",
+          "defaultSelection": {
+            "values": {
+              "dataType": "DATETIME",
+              "values": [
+                {
+                  "value": "2025-11-10T10:06:12"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "b7884464",
+      "displayName": "Compute Cluster Information - Summary",
+      "queryLines": [
+        "\r\n",
+        "SELECT DISTINCT\r\n",
+        "        c.cluster_id,\r\n",
+        "        c.cluster_name,\r\n",
+        "        concat  ('<a href=\"', \r\n",
+        "                'https://dbc-8c09cf6c-96ac.cloud.databricks.com/sql/dashboardsv3/01f0be1f772d1b39a95260361e24170f/pages/55d4c6cd?o=1011890501861229&f_e6e031ae=&f_55d4c6cd%7E541d9f07=',\r\n",
+        "                url_encode(c.cluster_name),\r\n",
+        "                '\">', c.cluster_name, '</a>'\r\n",
+        "                ) as cluster_name_link, --Update this link\r\n",
+        "        c.delete_time,\r\n",
+        "        c.driver_node_type,\r\n",
+        "        c.worker_node_type,\r\n",
+        "        c.worker_count,\r\n",
+        "        c.auto_termination_minutes,\r\n",
+        "        c.cluster_source,\r\n",
+        "        min(n.start_time) as first_start,\r\n",
+        "        max(n.end_time) as last_start,\r\n",
+        "        w.workspace_name\r\n",
+        "    FROM system.compute.clusters AS c\r\n",
+        "LEFT JOIN system.compute.node_timeline AS n\r\n",
+        "    ON c.cluster_id = n.cluster_id\r\n",
+        "LEFT JOIN system.access.workspaces_latest as w\r\n",
+        "    ON w.workspace_id = n.workspace_id\r\n",
+        "WHERE driver = TRUE\r\n",
+        "AND   (:filterDeleted = 'No' or c.delete_time IS NULL)\r\n",
+        "Group by    c.cluster_id,\r\n",
+        "            c.cluster_name,\r\n",
+        "            c.delete_time,\r\n",
+        "            c.driver_node_type,\r\n",
+        "            c.worker_node_type,\r\n",
+        "            c.worker_count,\r\n",
+        "            c.auto_termination_minutes,\r\n",
+        "            c.cluster_source,\r\n",
+        "            w.workspace_name\r\n",
+        "order by cluster_name\r\n",
+        "\r\n"
+      ],
+      "parameters": [
+        {
+          "displayName": "filterDeleted",
+          "keyword": "filterDeleted",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "Yes"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "8a4438f3",
+      "displayName": "Simple Response Data - Yes and No",
+      "queryLines": [
+        "SELECT 'Yes' AS `Y/N`\r\n",
+        "UNION ALL\r\n",
+        "SELECT 'No' AS  `Y/N`"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "e6e031ae",
+      "displayName": "cluster selection",
+      "layout": [
+        {
+          "widget": {
+            "name": "c7fb72d4",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "b7884464",
+                  "fields": [
+                    {
+                      "name": "workspace_name",
+                      "expression": "`workspace_name`"
+                    },
+                    {
+                      "name": "cluster_name_link",
+                      "expression": "`cluster_name_link`"
+                    },
+                    {
+                      "name": "cluster_name",
+                      "expression": "`cluster_name`"
+                    },
+                    {
+                      "name": "first_start",
+                      "expression": "`first_start`"
+                    },
+                    {
+                      "name": "last_start",
+                      "expression": "`last_start`"
+                    },
+                    {
+                      "name": "cluster_source",
+                      "expression": "`cluster_source`"
+                    },
+                    {
+                      "name": "delete_time",
+                      "expression": "`delete_time`"
+                    },
+                    {
+                      "name": "driver_node_type",
+                      "expression": "`driver_node_type`"
+                    },
+                    {
+                      "name": "worker_node_type",
+                      "expression": "`worker_node_type`"
+                    },
+                    {
+                      "name": "worker_count",
+                      "expression": "`worker_count`"
+                    },
+                    {
+                      "name": "auto_termination_minutes",
+                      "expression": "`auto_termination_minutes`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "workspace_name",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 1,
+                    "title": "workspace_name",
+                    "allowSearch": true,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "cluster_name_link",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 2,
+                    "title": "cluster_name_link",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": true,
+                    "highlightLinks": true,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "defaultColumnWidth": 300
+                  },
+                  {
+                    "fieldName": "cluster_name",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": false,
+                    "order": 3,
+                    "title": "cluster_name",
+                    "allowSearch": true,
+                    "alignContent": "left",
+                    "allowHTML": true,
+                    "highlightLinks": true,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "first_start",
+                    "dateTimeFormat": "DD/MM/YYYY HH:mm:ss",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "datetime",
+                    "displayAs": "datetime",
+                    "visible": true,
+                    "order": 4,
+                    "title": "first_start",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "last_start",
+                    "dateTimeFormat": "DD/MM/YYYY HH:mm:ss",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "datetime",
+                    "displayAs": "datetime",
+                    "visible": true,
+                    "order": 5,
+                    "title": "last_start",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "cluster_source",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 6,
+                    "title": "cluster_source",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "delete_time",
+                    "dateTimeFormat": "DD/MM/YYYY HH:mm:ss",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "datetime",
+                    "displayAs": "datetime",
+                    "visible": true,
+                    "order": 7,
+                    "title": "delete_time",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "driver_node_type",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 8,
+                    "title": "driver_node_type",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "worker_node_type",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 9,
+                    "title": "worker_node_type",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "worker_count",
+                    "numberFormat": "0",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 10,
+                    "title": "worker_count",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "auto_termination_minutes",
+                    "numberFormat": "0",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 11,
+                    "title": "auto_termination_minutes",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  }
+                ]
+              },
+              "invisibleColumns": [
+                {
+                  "booleanValues": [
+                    "false",
+                    "true"
+                  ],
+                  "imageUrlTemplate": "{{ @ }}",
+                  "imageTitleTemplate": "{{ @ }}",
+                  "imageWidth": "",
+                  "imageHeight": "",
+                  "linkUrlTemplate": "{{ @ }}",
+                  "linkTextTemplate": "{{ @ }}",
+                  "linkTitleTemplate": "{{ @ }}",
+                  "linkOpenInNewTab": true,
+                  "name": "cluster_id",
+                  "type": "string",
+                  "displayAs": "string",
+                  "order": 0,
+                  "title": "cluster_id",
+                  "allowSearch": false,
+                  "alignContent": "left",
+                  "allowHTML": false,
+                  "highlightLinks": false,
+                  "useMonospaceFont": false,
+                  "preserveWhitespace": false
+                }
+              ],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 100,
+              "paginationSize": "default",
+              "condensed": true,
+              "withRowNumber": false
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 6,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "filter-deleted",
+            "queries": [
+              {
+                "name": "dashboards/01f0be1f772d1b39a95260361e24170f/datasets/01f0be27f57617e28af8b39ff43a22a9_Y/N",
+                "query": {
+                  "datasetName": "8a4438f3",
+                  "fields": [
+                    {
+                      "name": "Y/N",
+                      "expression": "`Y/N`"
+                    },
+                    {
+                      "name": "Y/N_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/01f0be1f772d1b39a95260361e24170f/datasets/01f0be20769d1b05885621cc48b3c08d_filterDeleted",
+                "query": {
+                  "datasetName": "b7884464",
+                  "parameters": [
+                    {
+                      "name": "filterDeleted",
+                      "keyword": "filterDeleted"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "parameterName": "filterDeleted",
+                    "queryName": "parameter_dashboards/01f0be1f772d1b39a95260361e24170f/datasets/01f0be20769d1b05885621cc48b3c08d_filterDeleted"
+                  },
+                  {
+                    "fieldName": "Y/N",
+                    "queryName": "dashboards/01f0be1f772d1b39a95260361e24170f/datasets/01f0be27f57617e28af8b39ff43a22a9_Y/N"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Filter deleted"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 2,
+            "height": 1
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    },
+    {
+      "name": "55d4c6cd",
+      "displayName": "cluster capacity",
+      "layout": [
+        {
+          "widget": {
+            "name": "541d9f07",
+            "queries": [
+              {
+                "name": "dashboards/01f0be1f772d1b39a95260361e24170f/datasets/01f0be20769d1b05885621cc48b3c08d_cluster_name",
+                "query": {
+                  "datasetName": "b7884464",
+                  "fields": [
+                    {
+                      "name": "cluster_name",
+                      "expression": "`cluster_name`"
+                    },
+                    {
+                      "name": "cluster_name_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/01f0be1f772d1b39a95260361e24170f/datasets/01f0be204d5c1b69a4108d7a71dd11a9_cluster_name",
+                "query": {
+                  "datasetName": "9961399a",
+                  "parameters": [
+                    {
+                      "name": "cluster_name",
+                      "keyword": "cluster_name"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-multi-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "parameterName": "cluster_name",
+                    "queryName": "parameter_dashboards/01f0be1f772d1b39a95260361e24170f/datasets/01f0be204d5c1b69a4108d7a71dd11a9_cluster_name"
+                  },
+                  {
+                    "fieldName": "cluster_name",
+                    "queryName": "dashboards/01f0be1f772d1b39a95260361e24170f/datasets/01f0be20769d1b05885621cc48b3c08d_cluster_name"
+                  }
+                ]
+              },
+              "frame": {
+                "title": "cluster_name",
+                "showTitle": true
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 2,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "7d4e7c51",
+            "queries": [
+              {
+                "name": "parameter_dashboards/01f0be1f772d1b39a95260361e24170f/datasets/01f0be204d5c1b69a4108d7a71dd11a9_from",
+                "query": {
+                  "datasetName": "9961399a",
+                  "parameters": [
+                    {
+                      "name": "from",
+                      "keyword": "from"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-date-picker",
+              "encodings": {
+                "fields": [
+                  {
+                    "parameterName": "from",
+                    "queryName": "parameter_dashboards/01f0be1f772d1b39a95260361e24170f/datasets/01f0be204d5c1b69a4108d7a71dd11a9_from"
+                  }
+                ]
+              },
+              "frame": {
+                "title": "from",
+                "showTitle": true
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 0,
+            "width": 2,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "86e59ba5",
+            "queries": [
+              {
+                "name": "parameter_dashboards/01f0be1f772d1b39a95260361e24170f/datasets/01f0be204d5c1b69a4108d7a71dd11a9_to",
+                "query": {
+                  "datasetName": "9961399a",
+                  "parameters": [
+                    {
+                      "name": "to",
+                      "keyword": "to"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-date-picker",
+              "encodings": {
+                "fields": [
+                  {
+                    "parameterName": "to",
+                    "queryName": "parameter_dashboards/01f0be1f772d1b39a95260361e24170f/datasets/01f0be204d5c1b69a4108d7a71dd11a9_to"
+                  }
+                ]
+              },
+              "frame": {
+                "title": "to",
+                "showTitle": true
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 0,
+            "width": 2,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "2ea66ddd",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "9961399a",
+                  "fields": [
+                    {
+                      "name": "start_time",
+                      "expression": "`start_time`"
+                    },
+                    {
+                      "name": "max(cpu_system_percent)",
+                      "expression": "MAX(`cpu_system_percent`)"
+                    },
+                    {
+                      "name": "max(cpu_user_percent)",
+                      "expression": "MAX(`cpu_user_percent`)"
+                    },
+                    {
+                      "name": "max(mem_used_percent)",
+                      "expression": "MAX(`mem_used_percent`)"
+                    },
+                    {
+                      "name": "max(mem_swap_percent)",
+                      "expression": "MAX(`mem_swap_percent`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "start_time",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "format": {
+                    "type": "date-time",
+                    "date": "year-month-day",
+                    "time": "none",
+                    "leadingZeros": true
+                  }
+                },
+                "y": {
+                  "scale": {
+                    "type": "quantitative",
+                    "domain": {
+                      "min": 0,
+                      "max": 100
+                    }
+                  },
+                  "fields": [
+                    {
+                      "fieldName": "max(cpu_system_percent)"
+                    },
+                    {
+                      "fieldName": "max(cpu_user_percent)"
+                    },
+                    {
+                      "fieldName": "max(mem_used_percent)"
+                    },
+                    {
+                      "fieldName": "max(mem_swap_percent)"
+                    }
+                  ],
+                  "axis": {
+                    "hideTitle": true
+                  }
+                }
+              },
+              "frame": {
+                "title": "CPU and RAM",
+                "showTitle": true
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "22649f2e",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "9961399a",
+                  "fields": [
+                    {
+                      "name": "key",
+                      "expression": "`key`"
+                    },
+                    {
+                      "name": "start_time",
+                      "expression": "`start_time`"
+                    },
+                    {
+                      "name": "sum(value)",
+                      "expression": "SUM(`value`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "start_time",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "format": {
+                    "type": "date-time",
+                    "date": "year-month-day",
+                    "time": "none",
+                    "leadingZeros": true
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(value)",
+                  "scale": {
+                    "type": "quantitative",
+                    "domain": {
+                      "min": 0
+                    }
+                  },
+                  "axis": {
+                    "title": "Disk space in bytes"
+                  },
+                  "displayName": "Disk space in bytes"
+                },
+                "color": {
+                  "fieldName": "key",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "frame": {
+                "title": "Disk space",
+                "showTitle": true
+              },
+              "mark": {
+                "layout": "layer"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 13,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "5f791dc5",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "9961399a",
+                  "fields": [
+                    {
+                      "name": "start_time",
+                      "expression": "`start_time`"
+                    },
+                    {
+                      "name": "avg(network_received_bytes)",
+                      "expression": "AVG(`network_received_bytes`)"
+                    },
+                    {
+                      "name": "avg(network_sent_bytes)",
+                      "expression": "AVG(`network_sent_bytes`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "start_time",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "format": {
+                    "type": "date-time",
+                    "date": "year-month-day",
+                    "time": "none",
+                    "leadingZeros": true
+                  }
+                },
+                "y": {
+                  "scale": {
+                    "type": "quantitative",
+                    "domain": {
+                      "min": 0
+                    }
+                  },
+                  "fields": [
+                    {
+                      "fieldName": "avg(network_received_bytes)"
+                    },
+                    {
+                      "fieldName": "avg(network_sent_bytes)"
+                    }
+                  ],
+                  "format": {
+                    "type": "number-bytes",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    }
+                  },
+                  "axis": {
+                    "title": "Bytes over network"
+                  }
+                }
+              },
+              "frame": {
+                "title": "Networking",
+                "showTitle": true
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 13,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "2318711a",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "9961399a",
+                  "fields": [
+                    {
+                      "name": "start_time",
+                      "expression": "`start_time`"
+                    },
+                    {
+                      "name": "max(core_count)",
+                      "expression": "MAX(`core_count`)"
+                    },
+                    {
+                      "name": "max(cpu_cores_used)",
+                      "expression": "MAX(`cpu_cores_used`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "start_time",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "format": {
+                    "type": "date-time",
+                    "date": "year-month-day",
+                    "time": "none",
+                    "leadingZeros": true
+                  }
+                },
+                "y": {
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "fields": [
+                    {
+                      "fieldName": "max(core_count)"
+                    },
+                    {
+                      "fieldName": "max(cpu_cores_used)"
+                    }
+                  ],
+                  "axis": {
+                    "hideTitle": true
+                  }
+                }
+              },
+              "frame": {
+                "title": "CPU Cores",
+                "showTitle": true
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 7,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "e5c6546e",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "9961399a",
+                  "fields": [
+                    {
+                      "name": "start_time",
+                      "expression": "`start_time`"
+                    },
+                    {
+                      "name": "avg(mem_mb_used)",
+                      "expression": "AVG(`mem_mb_used`)"
+                    },
+                    {
+                      "name": "avg(memory_mb)",
+                      "expression": "AVG(`memory_mb`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "area",
+              "encodings": {
+                "x": {
+                  "fieldName": "start_time",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "format": {
+                    "type": "date-time",
+                    "date": "year-month-day",
+                    "time": "none",
+                    "leadingZeros": true
+                  },
+                  "axis": {
+                    "hideLabels": false,
+                    "hideTitle": false
+                  }
+                },
+                "y": {
+                  "fields": [
+                    {
+                      "fieldName": "avg(mem_mb_used)"
+                    },
+                    {
+                      "fieldName": "avg(memory_mb)"
+                    }
+                  ],
+                  "scale": {
+                    "type": "quantitative",
+                    "domain": {
+                      "min": 0
+                    }
+                  },
+                  "format": {
+                    "type": "number-bytes",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 2
+                    },
+                    "hideGroupSeparator": false
+                  },
+                  "axis": {
+                    "hideTitle": true
+                  }
+                }
+              },
+              "frame": {
+                "title": "Memory usage",
+                "showTitle": true
+              },
+              "mark": {
+                "layout": "stack"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 7,
+            "width": 3,
+            "height": 6
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    },
+    {
+      "name": "8f4ed107",
+      "displayName": "Global Filters",
+      "layout": [
+        {
+          "widget": {
+            "name": "71e8d5c1",
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-single-select",
+              "encodings": {},
+              "frame": {
+                "showTitle": true
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 1,
+            "height": 2
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_GLOBAL_FILTERS"
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+    },
+    "applyModeEnabled": false
+  }
+}
